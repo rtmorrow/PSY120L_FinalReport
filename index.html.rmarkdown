@@ -1,0 +1,702 @@
+---
+title: "Decision Making Study"
+subtitle: "PSY 120L Reproducible Analysis Report"
+author: "Your name"
+date: today
+format:
+  html:
+    theme: flatly 
+    toc: true
+    toc-title: "Report Sections"
+    toc-depth: 2
+    toc-location: left
+    code-fold: true
+    code-summary: "Show code"
+    code-tools: true
+    highlight-style: tango
+    embed-resources: true
+    smooth-scroll: true
+execute:
+  warning: false
+  message: false
+---
+
+## About This Report
+
+##In order to examine the relationship between peer influence, and personality (specifically conscientiousness) on risk taking behavior, this study consists of a two way ANOVA. 
+
+## Study Overview
+
+## The observed factors and levels are as follows
+## IV: Peer norm exposure (avoid, engage)-- priming statements
+## Moderator: Conscientiousness (high, low)-- median split of self report survey data
+## DV1: Peer norm resistance level-- self report survey data
+## DV2: Risk taking propensity-- self report survey data
+
+```{r}
+#| label: setup
+#| include: false
+#| echo: true
+#| warning: false
+#| message: false
+
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,
+  fig.align = "center"
+)
+
+options(stringsAsFactors = FALSE)
+```
+
+------------------------------------------------------------------------
+
+## Setup and Software Environment
+
+*add snippet here*
+
+**Load Packages**
+
+```{r}
+#| label: load_packages
+#| echo: true
+#| warning: false
+#| message: false
+
+library(tidyverse)  # data manipulation + plotting
+library(psych)      # scale construction + reliability
+library(afex)       # ANOVA models + effect sizes
+library(emmeans)    # estimated marginal means + confidence intervals
+```
+
+------------------------------------------------------------------------
+
+## Data Source and Analysis Dataset
+
+*add snippet here*
+
+### Import Dataset
+
+```{r}
+#| label: import_data
+#| echo: true
+#| warning: false
+#| message: false
+
+study_raw <- read_csv("data/decision_making_data.csv")
+```
+
+### Check Imported Dataset
+
+```{r}
+#| label: check_imported_data
+#| echo: true
+#| warning: false
+#| message: false
+
+dim(study_raw)
+
+names(study_raw)
+
+head(study_raw)
+```
+
+## The above data depicts the names of each element and question of the survey, and on the second page, 
+## the day the survey was taken and the length of time the first 6 participants alotted to complete the survey. 
+
+### Create Analysis Dataset
+
+```{r}
+#| label: create_analysis_dataset
+#| echo: true
+#| warning: false
+#| message: false
+
+study_vars <- c(
+  "condition",  # experimental condition variable
+  "age", "academic_year", "gender",
+  
+          "RTL_1", "RTL_2", "RTL_3", "RTL_4", "RTL_5",
+  
+          "PNR_1", "PNR_2", "PNR_3", "PNR_4", "PNR_5",
+  
+          "con_1", "con_2", "con_3", "con_4", "con_5", 
+          "con_6", "con_7", "con_8", "con_9", "con_10", 
+          "con_11", "con_12"
+)
+
+study_data <- study_raw %>%
+  select(all_of(study_vars)) %>%
+  mutate(across(everything(), as.numeric))
+```
+
+### Check Analysis Dataset
+
+```{r}
+#| label: check_analysis_dataset
+#| echo: true
+#| warning: false
+#| message: false
+
+length(study_vars)
+
+dim(study_data)
+
+names(study_data)
+```
+## We changed the elements to numeric data
+## There were 26 responses
+## 65 rows and 37 columns 
+
+------------------------------------------------------------------------
+
+## Variable Preparation
+
+## The independent variable:peer-norm exposure conditions are turned into a numeric variable
+
+### Prepare Participant ID and Experimental Condition
+
+```{r}
+#| label: prepare_id_and_condition
+#| echo: true
+#| warning: false
+#| message: false
+
+study_data <- study_data %>%
+  mutate(
+    id = row_number(),
+    condition= factor(
+      condition,
+      levels = c(0, 1),
+      labels = c("Risk-Avoiding", "Risk-Normalizing")
+    )
+  )
+```
+
+## Risk avoiding is now 0, and normalizing is 1
+
+### Check Experimental Condition Coding
+
+```{r}
+#| label: check_condition_coding
+#| echo: true
+#| warning: false
+#| message: false
+
+study_data %>%
+  count(condition) %>%
+  knitr::kable(
+    col.names = c("Condition", "n")
+  )
+```
+
+The condition check confirms the number of participants assigned to each mood condition.
+
+### Check Prepared Analysis Dataset
+
+```{r}
+#| label: check_prepared_analysis_dataset
+#| echo: true
+#| warning: false
+#| message: false
+
+dim(study_data)
+
+names(study_data)
+```
+
+*add snippet here about output above*
+
+------------------------------------------------------------------------
+
+### Reverse-Code Scale Items
+
+### To check for response validity, half of the items on the conscientiousness scale were reverse scored (would indicate less contientiousness) and need to be switched in terms of value.  
+
+```{r}
+#| label: reverse_code_items
+#| echo: true
+#| warning: false
+#| message: false
+
+study_data <- study_data %>%
+  mutate(
+    con_1r = 6 - con_1,
+    con_2r = 6 - con_2,
+    con_5r = 6 - con_5,
+    con_6r = 6 - con_6,
+    con_10r = 6 - con_10,
+    con_12r = 6 - con_12
+  )
+```
+
+### Check Reverse Coding
+
+```{r}
+#| label: check_reverse_coding
+#| echo: true
+#| warning: false
+#| message: false
+
+study_data %>%
+  select(con_1, con_1r) %>%
+  head(10) %>%
+  knitr::kable()
+```
+
+*add snippet here about output above*
+
+### Create Scale Scores
+
+*add snippet here*
+
+```{r}
+#| label: create_scale_scores
+#| echo: true
+#| warning: false
+#| message: false
+
+# Define risk-taking likelihood items
+risk_taking_items <- c("RTL_1", "RTL_2", "RTL_3", "RTL_4", "RTL_5")
+
+# Define peer norm resistance items
+peer_norm_resistance_items <- c("PNR_1", "PNR_2", "PNR_3", "PNR_4", "PNR_5")
+
+# Define conscientiousness items
+conscientiousness_items <- c("con_1r", "con_2r", "con_3", "con_4", "con_5r", "con_6r", "con_7", "con_8", "con_9", "con_10r", "con_11", "con_12r")
+
+# Create scale scores
+study_data <- study_data %>%
+  mutate(
+    risk_taking = rowMeans(across(all_of(risk_taking_items)), na.rm = TRUE),
+    peer_norm_resistance = rowMeans(across(all_of(peer_norm_resistance_items)), na.rm = TRUE),
+    conscientiousness = rowMeans(across(all_of(conscientiousness_items)), na.rm = TRUE)
+  )
+```
+
+### Check Scale Scores
+
+```{r}
+#| label: check_scale_scores
+#| echo: true
+#| warning: false
+#| message: false
+
+study_data %>%
+  select(risk_taking, peer_norm_resistance, conscientiousness) %>%
+  summary()
+
+study_data %>%
+  summarise(
+    risk_taking_missing = mean(is.na(risk_taking)),
+    peer_norm_resistance_missing = mean(is.na(peer_norm_resistance)),
+    conscientiousness_missing = mean(is.na(conscientiousness))
+  ) %>%
+  knitr::kable()
+```
+
+*add snippet about output above here*
+
+------------------------------------------------------------------------
+
+### Create Concientiousness Groups
+
+*add snippet here*
+
+```{r}
+#| label: create_conscientiousness_groups
+#| echo: true
+#| warning: false
+#| message: false
+
+conscientiousness_median <- median(study_data$conscientiousness, na.rm = TRUE)
+
+study_data <- study_data %>%
+  mutate(
+    conscientiousness_msplit = if_else(conscientiousness <= conscientiousness_median, "Low", "High"),
+    conscientiousness_msplit = factor(conscientiousness_msplit, levels = c("Low", "High"))
+  )
+
+conscientiousness_median
+
+study_data %>%
+  count(conscientiousness_msplit) %>%
+  knitr::kable()
+```
+
+*add snippet here about output above*
+
+------------------------------------------------------------------------
+
+### Check Scale Reliability
+
+*add snippet here*
+
+```{r}
+#| label: check_scale_reliability
+#| echo: true
+#| warning: false
+#| message: false
+
+risk_taking_item_df <- study_data %>% select(all_of(risk_taking_items))
+peer_norm_resistance_item_df <- study_data %>% select(all_of(peer_norm_resistance_items))
+conscientiousness_item_df <- study_data %>% select(all_of(conscientiousness_items))
+
+risk_taking_alpha <- psych::alpha(risk_taking_item_df)
+risk_taking_omega <- psych::omega(risk_taking_item_df, plot = FALSE)
+
+peer_norm_resistance_alpha <- psych::alpha(peer_norm_resistance_item_df)
+peer_norm_resistance_omega <- psych::omega(peer_norm_resistance_item_df, plot = FALSE)
+
+conscientiousness_alpha <- psych::alpha(conscientiousness_item_df)
+conscientiousness_omega <- psych::omega(conscientiousness_item_df, plot = FALSE)
+
+reliability_table <- tibble(
+  scale = c("Risk-Taking Likelihood", "Peer Norm Resistance", "Conscientiousness"),
+  alpha = c(
+    risk_taking_alpha$total$raw_alpha,
+    peer_norm_resistance_alpha$total$raw_alpha,
+    conscientiousness_alpha$total$raw_alpha
+  ),
+  omega = c(
+    risk_taking_omega$omega.tot,
+    peer_norm_resistance_omega$omega.tot,
+    conscientiousness_omega$omega.tot
+  )
+)
+
+reliability_table %>%
+  mutate(
+    alpha = round(alpha, 2),
+    omega = round(omega, 2)
+  ) %>%
+  knitr::kable(
+    col.names = c("Scale", "Cronbach's alpha", "McDonald's omega")
+  )
+```
+
+*add snippet here about output above*
+
+------------------------------------------------------------------------
+
+## Descriptive Statistics
+
+*add snippet here*
+
+### Scale Score Descriptives
+
+```{r}
+#| label: scale_score_descriptives
+#| echo: true
+#| warning: false
+#| message: false
+
+study_data %>%
+  select(risk_taking, peer_norm_resistance, conscientiousness) %>%
+  psych::describe() %>%
+  knitr::kable(digits = 2)
+```
+
+*add snippet here about output above*
+
+### Sample Composition
+
+```{r}
+#| label: sample_composition
+#| echo: true
+#| warning: false
+#| message: false
+
+study_data %>%
+  summarise(
+    mean_age = mean(age, na.rm = TRUE),
+    sd_age = sd(age, na.rm = TRUE),
+    min_age = min(age, na.rm = TRUE),
+    max_age = max(age, na.rm = TRUE)
+  ) %>%
+  knitr::kable(digits = 2)
+
+study_data %>%
+  count(academic_year) %>%
+  mutate(percent = round(100 * n / sum(n), 1)) %>%
+  knitr::kable()
+
+study_data %>%
+  count(gender) %>%
+  mutate(percent = round(100 * n / sum(n), 1)) %>%
+  knitr::kable()
+```
+
+*add snippet here about output above*
+
+------------------------------------------------------------------------
+
+## Correlations Among the DVs
+
+*add snippet here*
+
+```{r}
+#| label: dv_correlations
+#| echo: true
+#| warning: false
+#| message: false
+
+study_data %>%
+  select(risk_taking, peer_norm_resistance) %>%
+  psych::corr.test()
+```
+
+------------------------------------------------------------------------
+
+## Primary Analyses
+
+*add snippet here*
+
+------------------------------------------------------------------------
+
+### Risk Taking Model
+
+*add snippet here*
+
+```{r}
+#| label: anova_risk_taking
+#| echo: true
+#| warning: false
+#| message: false
+
+a1_risk <- afex::aov_ez(
+  id = "id",
+  dv = "risk_taking",
+  between = c("condition", "conscientiousness_msplit"),
+  data = study_data
+)
+
+a1_risk
+```
+
+*add snippet here about output above*
+
+### Estimated Means for Depression
+
+```{r}
+#| label: estimated_means_risk_taking
+#| echo: true
+#| warning: false
+#| message: false
+
+emmeans(a1_risk, ~ condition)
+
+emmeans(a1_risk, ~ conscientiousness_msplit)
+
+emmeans(a1_risk, ~ condition * conscientiousness_msplit)
+```
+
+## Confidence level is close to 1-- high
+## For each IV condition, participants are divided on the moderating variable with a median split
+
+------------------------------------------------------------------------
+
+### Peer Norm Resistance Model
+
+*add snippet here*
+
+```{r}
+#| label: anova_peer_norm_resistance
+#| echo: true
+#| warning: false
+#| message: false
+
+a1_peer <- afex::aov_ez(
+  id = "id",
+  dv = "peer_norm_resistance",
+  between = c("condition", "conscientiousness_msplit"),
+  data = study_data
+)
+
+a1_peer
+```
+
+*add snippet here about output above*
+
+### Estimated Means for Peer Norm Resistance
+
+```{r}
+#| label: estimated_means_peer_norm_resistance
+#| echo: true
+#| warning: false
+#| message: false
+
+emmeans(a1_peer, ~ condition)
+
+emmeans(a1_peer, ~ conscientiousness_msplit)
+
+emmeans(a1_peer, ~ condition * conscientiousness_msplit)
+```
+
+*add snippet here about output above*
+
+------------------------------------------------------------------------
+
+## Figures
+
+*add snippet here*
+
+### Depression Interaction Plot
+
+```{r}
+#| label: risk_taking_interaction_plot
+#| echo: true
+#| warning: false
+#| message: false
+
+risk_cell_means <- as.data.frame(
+  emmeans(a1_risk, ~ condition * conscientiousness_msplit)
+)
+
+p_risk_bar <- ggplot(
+  risk_cell_means,
+  aes(
+    x = condition,
+    y = emmean,
+    fill = conscientiousness_msplit
+  )
+) +
+  geom_col(
+    position = position_dodge(width = 0.65),
+    width = 0.55,
+    color = "white"
+  ) +
+  geom_errorbar(
+    aes(
+      ymin = lower.CL,
+      ymax = upper.CL
+    ),
+    position = position_dodge(width = 0.65),
+    width = 0.12,
+    linewidth = 0.7
+  ) +
+  labs(
+    x = "Risk Condition",
+    y = "Mean Risk-Taking Likelihood Score",
+    fill = "Conscientiousness"
+  ) +
+  scale_fill_manual(
+    values = c(
+      "Low" = "#E76F51",  # YOU CAN CHANGE THESE TWO HEX VALUES TO MATCH YOUR POSTER! 
+      "High" = "#2A9D8F"  # YOU CAN CHANGE THESE TWO HEX VALUES TO MATCH YOUR POSTER! 
+    )
+  ) +
+  scale_y_continuous(breaks = 1:5) +
+  coord_cartesian(ylim = c(1, 5)) +
+  theme_classic(base_size = 14)
+
+p_risk_bar
+```
+
+*add snippet here about output above*
+
+### Anxiety Interaction Plot
+
+```{r}
+#| label: peer_norm_resistance_interaction_plot
+#| echo: true
+#| warning: false
+#| message: false
+
+peer_cell_means <- as.data.frame(
+  emmeans(a1_peer, ~ condition * conscientiousness_msplit)
+)
+
+p_peer_bar <- ggplot(
+  peer_cell_means,
+  aes(
+    x = condition,
+    y = emmean,
+    fill = conscientiousness_msplit
+  )
+) +
+  geom_col(
+    position = position_dodge(width = 0.65),
+    width = 0.55,
+    color = "white"
+  ) +
+  geom_errorbar(
+    aes(
+      ymin = lower.CL,
+      ymax = upper.CL
+    ),
+    position = position_dodge(width = 0.65),
+    width = 0.12,
+    linewidth = 0.7
+  ) +
+  labs(
+    x = "Risk Condition",
+    y = "Mean Peer Norm Resistance Score",
+    fill = "Conscientiousness"
+  ) +
+  scale_fill_manual(
+    values = c(
+      "Low" = "#E76F51",  # YOU CAN CHANGE THESE TWO HEX VALUES TO MATCH YOUR POSTER! 
+      "High" = "#2A9D8F"  # YOU CAN CHANGE THESE TWO HEX VALUES TO MATCH YOUR POSTER! 
+    )
+  ) +
+  scale_y_continuous(breaks = 1:7) +
+  coord_cartesian(ylim = c(1, 7)) +
+  theme_classic(base_size = 14)
+
+p_peer_bar
+```
+
+*add snippet here about output above*
+
+### Export Figures
+
+```{r}
+#| label: save_figures
+#| echo: true
+#| warning: false
+#| message: false
+
+if (!dir.exists("figures")) {
+  dir.create("figures")
+}
+
+ggsave(
+  filename = "figures/risk_taking_interaction_plot.svg",
+  plot = p_risk_bar,
+  width = 7,
+  height = 5
+)
+
+ggsave(
+  filename = "figures/peer_norm_resistance_interaction_plot.svg",
+  plot = p_peer_bar,
+  width = 7,
+  height = 5
+)
+```
+
+*add snippet here about output above*
+
+------------------------------------------------------------------------
+
+## Results Summary
+
+*ADD SUMMARY with no statistics*
+
+## Reproducibility Information
+
+*REWRITE THIS IN YOUR OWN WORDS :)*
+
+This section records the R version, operating system, and package versions used to render the report. Including this information helps another reader understand the software environment used to reproduce the analyses.
+
+```{r}
+#| label: session_info
+#| echo: true
+#| warning: false
+#| message: false
+
+sessionInfo()
+```
+
